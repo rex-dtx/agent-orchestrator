@@ -27,6 +27,7 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/adapters/systemexec"
 	"github.com/aoagents/agent-orchestrator/backend/internal/autoreview"
 	"github.com/aoagents/agent-orchestrator/backend/internal/browserruntime"
+	"github.com/aoagents/agent-orchestrator/backend/internal/claudeops"
 	"github.com/aoagents/agent-orchestrator/backend/internal/codexops"
 	"github.com/aoagents/agent-orchestrator/backend/internal/config"
 	"github.com/aoagents/agent-orchestrator/backend/internal/daemon/supervisor"
@@ -343,6 +344,7 @@ func Run() error {
 		return fmt.Errorf("resolve device-global Codex home: %w", err)
 	}
 	codexOperationGate := codexops.NewGate()
+	claudeCodeOperationGate := claudeops.NewGate()
 	claudeHome, err := os.UserHomeDir()
 	if err != nil {
 		stop()
@@ -368,6 +370,7 @@ func Run() error {
 		ClaudeCodeHome:              claudeHome,
 		ClaudeCodeKeychain:          claudeagent.NewKeychain(),
 		ClaudeCodeAccountState:      store,
+		ClaudeCodeOperationGate:     claudeCodeOperationGate,
 		ClaudeCodeResolveExecutable: func(resolveCtx context.Context) (string, error) {
 			return claudeagent.New().ResolveBinary(resolveCtx)
 		},
@@ -382,7 +385,7 @@ func Run() error {
 	agentSvc = agentsvc.NewWithDeps(agentDeps)
 	agentSvc.WarmModelCatalogs(ctx)
 
-	sessionSvc, reviewSvc, wiredSessMgr, err := startSession(ctx, cfg, runtimeAdapter, store, lcStack.LCM, messenger, telemetrySink, agents, agentSvc, managedPreview, browserBroker, browserAuthority, chatLauncher{svc: chatSvc}, settingsSvc, tracker, codexOperationGate, log)
+	sessionSvc, reviewSvc, wiredSessMgr, err := startSession(ctx, cfg, runtimeAdapter, store, lcStack.LCM, messenger, telemetrySink, agents, agentSvc, managedPreview, browserBroker, browserAuthority, chatLauncher{svc: chatSvc}, settingsSvc, tracker, codexOperationGate, claudeCodeOperationGate, log)
 	if err != nil {
 		stop()
 		lcStack.Stop()
@@ -398,6 +401,8 @@ func Run() error {
 	sessMgr.SetTerminalInputGate(termMgr)
 	agentSvc.SetCodexAccountSwitchCoordinator(sessMgr)
 	sessMgr.SetCodexAccountSwitchObserver(agentSvc.PublishCodexAccounts)
+	agentSvc.SetClaudeCodeAccountSwitchCoordinator(sessMgr)
+	sessMgr.SetClaudeCodeAccountSwitchObserver(agentSvc.PublishClaudeCodeAccounts)
 	lifecycleMessenger.Bind(sessionLifecycleMessenger{sessMgr})
 	lcStack.LCM.SetCompletionTerminator(sessMgr)
 	lcStack.LCM.SetSessionInputLease(sessMgr)
