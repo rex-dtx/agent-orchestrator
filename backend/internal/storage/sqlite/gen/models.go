@@ -76,7 +76,7 @@ type AppSetting struct {
 	ID                 int64
 	DefaultSessionMode domain.SessionMode
 	UpdatedAt          time.Time
-	CloudOffering      int64
+	CloudOffering      bool
 }
 
 type ChangeLog struct {
@@ -433,6 +433,8 @@ type Session struct {
 	Model                     string
 	LatestUserPromptAt        sql.NullTime
 	ReviewerAgentConfig       string
+	ArtifactDir               string
+	SessionOutputType         string
 }
 
 type SessionCleanupFact struct {
