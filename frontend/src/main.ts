@@ -47,13 +47,14 @@ import {
 	writeUiSettings,
 	type UiSettings,
 } from "./main/ui-settings";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { chmod, copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import { type DaemonLaunchSpec, bundledDaemonIdentityError, resolveDaemonLaunch } from "./shared/daemon-launch";
 import { createListenPortScanner, defaultRunFilePath, parseRunFile } from "./shared/daemon-discovery";
 import type { DaemonStatus } from "./shared/daemon-status";
@@ -131,6 +132,8 @@ import { parseOpenFolderPathArg } from "./main/open-folder-arg";
 // Globals injected at compile time by @electron-forge/plugin-vite.
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
+
+const execFileAsync = promisify(execFile);
 
 // Windows GUI launches (e.g. from a Start-menu/desktop shortcut) have no attached
 // console, so process.stdout and process.stderr are dead pipes. The daemon-output
@@ -1931,6 +1934,18 @@ async function chooseDirectory(title: string): Promise<string | null> {
 
 ipcMain.handle("app:chooseDirectory", async (_event, title?: string) => {
 	return chooseDirectory(typeof title === "string" && title.trim() ? title : "Choose a git repository");
+});
+ipcMain.handle("app:checkGitRepository", async (_event, remoteUrl: string) => {
+	await ensureShellEnv();
+	try {
+		await execFileAsync("git", ["ls-remote", "--quiet", remoteUrl, "HEAD"], {
+			env: daemonEnv(),
+			timeout: 8000,
+		});
+		return true;
+	} catch {
+		return false;
+	}
 });
 ipcMain.handle("app:scanImportFolder", async (_event, input: { path: string; mode: "project" | "workspace" }) => {
 	await ensureShellEnv();
