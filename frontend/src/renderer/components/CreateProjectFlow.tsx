@@ -58,8 +58,12 @@ export function CreateProjectFlow({
 	onCreateProject,
 	onInitializeProject,
 	openSignal,
+	existingProjectPaths = [],
+	existingProjectNames = [],
 }: {
 	children?: (state: { choosePath: () => void; disabled: boolean; error: string | null; label: string }) => ReactNode;
+	existingProjectPaths?: readonly string[];
+	existingProjectNames?: readonly string[];
 	// A folder was dropped on the app window (ShellLayout owns the global
 	// listener). Mirrors openSignal but carries a path: skips straight to the
 	// mode picker with the native OS dialog step skipped.
@@ -397,6 +401,8 @@ export function CreateProjectFlow({
 								}, 80);
 							}}
 							open={cloneDialogOpen}
+							existingProjectPaths={existingProjectPaths}
+							existingProjectNames={existingProjectNames}
 							value={cloneDetails}
 						/>
 					) : null}
