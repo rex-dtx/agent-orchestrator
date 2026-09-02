@@ -9,6 +9,7 @@ import { conversationQueryKey, conversationQueryRoot } from "../hooks/useConvers
 import { agentSwitchesQueryRoot } from "../hooks/useAgentSwitches";
 import { sessionUsageQueryRoot } from "../hooks/useSessionUsageSummaries";
 import { codexAccountsQueryKey, writeCodexAccounts } from "../hooks/codex-accounts-state";
+import { claudeCodeAccountsQueryKey, writeClaudeCodeAccounts } from "../hooks/claude-code-accounts-state";
 import type { components } from "../../api/schema";
 
 export type EventTransport = {
@@ -59,11 +60,22 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 			let sourceBaseUrl: string | undefined;
 			let accountSource: EventSource | undefined;
 			let accountSourceBaseUrl: string | undefined;
-			const applyAccountEvent = (event: Event) => {
+			let claudeAccountSource: EventSource | undefined;
+			let claudeAccountSourceBaseUrl: string | undefined;
+			const applyCodexAccountEvent = (event: Event) => {
 				if (!("data" in event)) return;
 				try {
 					const decoded = JSON.parse(String((event as MessageEvent).data)) as components["schemas"]["CodexAccountsResponse"];
 					writeCodexAccounts(queryClient, decoded, "replace");
+				} catch {
+					// A malformed transient event cannot replace the cached safe snapshot.
+				}
+			};
+			const applyClaudeAccountEvent = (event: Event) => {
+				if (!("data" in event)) return;
+				try {
+					const decoded = JSON.parse(String((event as MessageEvent).data)) as components["schemas"]["ClaudeCodeAccountsResponse"];
+					writeClaudeCodeAccounts(queryClient, decoded);
 				} catch {
 					// A malformed transient event cannot replace the cached safe snapshot.
 				}
@@ -166,10 +178,13 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 				if (!hasTrustedApiBaseUrl()) {
 					source?.close();
 					accountSource?.close();
+					claudeAccountSource?.close();
 					source = undefined;
 					accountSource = undefined;
+					claudeAccountSource = undefined;
 					sourceBaseUrl = undefined;
 					accountSourceBaseUrl = undefined;
+					claudeAccountSourceBaseUrl = undefined;
 					setEventsConnectionState("disconnected");
 					return;
 				}
@@ -183,9 +198,23 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 							void queryClient.invalidateQueries({ queryKey: codexAccountsQueryKey });
 						};
 						accountSource.onerror = () => { if (accountSource?.readyState === EVENTSOURCE_CLOSED) scheduleRetry(); };
-						accountSource.addEventListener("codex_account", applyAccountEvent);
+						accountSource.addEventListener("codex_account", applyCodexAccountEvent);
 					} catch {
 						accountSource = undefined;
+					}
+				}
+				if (!claudeAccountSource || claudeAccountSourceBaseUrl !== baseUrl || claudeAccountSource.readyState === EVENTSOURCE_CLOSED) {
+					claudeAccountSource?.close();
+					claudeAccountSourceBaseUrl = baseUrl;
+					try {
+						claudeAccountSource = new EventSource(`${baseUrl.replace(/\/+$/, "")}/api/v1/agents/claude-code/accounts/events`);
+						claudeAccountSource.onopen = () => {
+							void queryClient.invalidateQueries({ queryKey: claudeCodeAccountsQueryKey });
+						};
+						claudeAccountSource.onerror = () => { if (claudeAccountSource?.readyState === EVENTSOURCE_CLOSED) scheduleRetry(); };
+						claudeAccountSource.addEventListener("claude_code_account", applyClaudeAccountEvent);
+					} catch {
+						claudeAccountSource = undefined;
 					}
 				}
 				// Keep a still-usable source on the same base URL; replace one the
@@ -240,6 +269,7 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 				removeBaseUrlListener();
 				source?.close();
 				accountSource?.close();
+				claudeAccountSource?.close();
 				setEventsConnectionState("idle");
 			};
 		},
